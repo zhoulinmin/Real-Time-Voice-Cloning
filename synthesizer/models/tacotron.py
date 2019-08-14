@@ -89,13 +89,17 @@ class Tacotron():
             p_stop_token_targets = tf.py_func(split_func, [stop_token_targets, split_infos[:, 2]],
                                               lout_float) if stop_token_targets is not None else \
 				stop_token_targets
-            
+            p_linear_targets = tf.py_func(split_func, [linear_targets, split_infos[:, 3]],
+                                          lout_float) if linear_targets is not None else linear_targets
+
             tower_inputs = []
             tower_mel_targets = []
             tower_stop_token_targets = []
+            tower_linear_targets = []
             
             batch_size = tf.shape(inputs)[0]
             mel_channels = hp.num_mels
+            linear_channels = hp.num_freq
             for i in range(hp.tacotron_num_gpus):
                 tower_inputs.append(tf.reshape(p_inputs[i], [batch_size, -1]))
                 if p_mel_targets is not None:
@@ -104,11 +108,14 @@ class Tacotron():
                 if p_stop_token_targets is not None:
                     tower_stop_token_targets.append(
                         tf.reshape(p_stop_token_targets[i], [batch_size, -1]))
+                if p_linear_targets is not None:
+                    tower_linear_targets.append(tf.reshape(p_linear_targets[i], [batch_size, -1, linear_channels]))
         
         self.tower_decoder_output = []
         self.tower_alignments = []
         self.tower_stop_token_prediction = []
         self.tower_mel_outputs = []
+        self.tower_linear_outputs = []
         
         tower_embedded_inputs = []
         tower_enc_conv_output_shape = []
@@ -279,7 +286,7 @@ class Tacotron():
         self.tower_inputs = tower_inputs
         self.tower_input_lengths = tower_input_lengths
         self.tower_mel_targets = tower_mel_targets
-        # self.tower_linear_targets = tower_linear_targets
+        self.tower_linear_targets = tower_linear_targets
         self.tower_targets_lengths = tower_targets_lengths
         self.tower_stop_token_targets = tower_stop_token_targets
         
@@ -291,7 +298,7 @@ class Tacotron():
         log("  GTA mode:                 {}".format(gta))
         log("  Synthesis mode:           {}".format(not (is_training or is_evaluating)))
         log("  Input:                    {}".format(inputs.shape))
-        for i in range(hp.tacotron_num_gpus + hp.tacotron_gpu_start_idx):
+        for i in range(hp.tacotron_num_gpus):
             log("  device:                   {}".format(i))
             log("  embedding:                {}".format(tower_embedded_inputs[i].shape))
             log("  enc conv out:             {}".format(tower_enc_conv_output_shape[i]))
@@ -349,11 +356,12 @@ class Tacotron():
                             self.tower_stop_token_prediction[i], self.tower_targets_lengths[i],
                             hparams=self._hparams)
                         # SV2TTS extra L1 loss (disabled for now)
-                        # linear_loss = MaskedLinearLoss(self.tower_mel_targets[i],
-                        #                                self.tower_decoder_output[i],
-                        #                                self.tower_targets_lengths[i],
-                        #                                hparams=self._hparams)
-                        linear_loss = 0.
+                        if hp.predict_linear:
+                            # Compute Linear L1 mask loss (priority to low frequencies)
+                            linear_loss = MaskedLinearLoss(self.tower_linear_targets[i], self.tower_linear_outputs[i],
+                                                           self.targets_lengths, hparams=self._hparams)
+                        else:
+                            linear_loss = 0.
                     else:
                         # Compute loss of predictions before postnet
                         before = tf.losses.mean_squared_error(self.tower_mel_targets[i],
@@ -367,21 +375,19 @@ class Tacotron():
                             logits=self.tower_stop_token_prediction[i]))
                         
                         # SV2TTS extra L1 loss
-                        l1 = tf.abs(self.tower_mel_targets[i] - self.tower_decoder_output[i])
-                        linear_loss = tf.reduce_mean(l1)
+                        #l1 = tf.abs(self.tower_mel_targets[i] - self.tower_decoder_output[i])
+                        #linear_loss = tf.reduce_mean(l1)
 
-                        # if hp.predict_linear:
-                        #     # Compute linear loss
-                        #     # From https://github.com/keithito/tacotron/blob/tacotron2-work-in
-						# 	# -progress/models/tacotron.py
-                        #     # Prioritize loss for frequencies under 2000 Hz.
-                        #     l1 = tf.abs(self.tower_linear_targets[i] - self.tower_linear_outputs[i])
-                        #     n_priority_freq = int(2000 / (hp.sample_rate * 0.5) * hp.num_freq)
-                        #     linear_loss = 0.5 * tf.reduce_mean(l1) + 0.5 * tf.reduce_mean(
-                        #         l1[:, :, 0:n_priority_freq])
-                        # else:
-                        #     linear_loss = 0.
-                    
+                        if hp.predict_linear:
+                            # Compute linear loss
+                            # From https://github.com/keithito/tacotron/blob/tacotron2-work-in-progress/models/tacotron.py
+                            # Prioritize loss for frequencies under 2000 Hz.
+                            l1 = tf.abs(self.tower_linear_targets[i] - self.tower_linear_outputs[i])
+                            n_priority_freq = int(2000 / (hp.sample_rate * 0.5) * hp.num_freq)
+                            linear_loss = 0.5 * tf.reduce_mean(l1) + 0.5 * tf.reduce_mean(l1[:, :, 0:n_priority_freq])
+                        else:
+                            linear_loss = 0.
+
                     # Compute the regularization weight
                     if hp.tacotron_scale_regularization:
                         reg_weight_scaler = 1. / (
@@ -458,8 +464,9 @@ class Tacotron():
                                                           worker_device=gpus[i])):
                 # agg_loss += self.tower_loss[i]
                 with tf.variable_scope("optimizer") as scope:
-                    gradients = optimizer.compute_gradients(self.tower_loss[i])
-                    tower_gradients.append(gradients)
+                     update_vars = [v for v in self.all_vars if not ('inputs_embedding' in v.name or 'encoder_' in v.name)] if hp.tacotron_fine_tuning else None
+                     gradients = optimizer.compute_gradients(self.tower_loss[i], var_list= update_vars)
+                     tower_gradients.append(gradients)
         
         # 3. Average Gradient
         with tf.device(grad_device):
