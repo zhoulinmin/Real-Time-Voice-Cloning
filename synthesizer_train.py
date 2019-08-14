@@ -15,8 +15,7 @@ def prepare_run(args):
     infolog.init(os.path.join(log_dir, "Terminal_train_log"), run_name, args.slack_url)
     return log_dir, modified_hp
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("name", help="Name of the run and of the logging directory.")
     parser.add_argument("synthesizer_root", type=str, help=\
@@ -35,9 +34,9 @@ if __name__ == "__main__":
                         help="Steps between running summary ops")
     parser.add_argument("--embedding_interval", type=int, default=10000,
                         help="Steps between updating embeddings projection visualization")
-    parser.add_argument("--checkpoint_interval", type=int, default=2000, # Was 5000
+    parser.add_argument("--checkpoint_interval", type=int, default=250, # Was 5000
                         help="Steps between writing checkpoints")
-    parser.add_argument("--eval_interval", type=int, default=100000, # Was 10000
+    parser.add_argument("--eval_interval", type=int, default=10000, # Was 10000
                         help="Steps between eval on test data")
     parser.add_argument("--tacotron_train_steps", type=int, default=2000000, # Was 100000
                         help="total number of tacotron training steps")
@@ -53,3 +52,7 @@ if __name__ == "__main__":
     log_dir, hparams = prepare_run(args)
     
     tacotron_train(args, log_dir, hparams)
+
+
+if __name__ == "__main__":
+    main()
