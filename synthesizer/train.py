@@ -86,7 +86,7 @@ def model_train_mode(args, feeder, hparams, global_step):
     with tf.variable_scope("Tacotron_model", reuse=tf.AUTO_REUSE) as scope:
         model = create_model("Tacotron", hparams)
         model.initialize(feeder.inputs, feeder.input_lengths, feeder.speaker_embeddings, 
-                         feeder.mel_targets, feeder.token_targets,
+                         feeder.mel_targets, feeder.token_targets, feeder.linear_targets,
                          targets_lengths=feeder.targets_lengths, global_step=global_step,
                          is_training=True, split_infos=feeder.split_infos)
         model.add_loss()
@@ -100,7 +100,7 @@ def model_test_mode(args, feeder, hparams, global_step):
         model = create_model("Tacotron", hparams)
         model.initialize(feeder.eval_inputs, feeder.eval_input_lengths, 
                          feeder.eval_speaker_embeddings, feeder.eval_mel_targets,
-                         feeder.eval_token_targets, targets_lengths=feeder.eval_targets_lengths, 
+                         feeder.eval_token_targets,feeder.eval_linear_targets, targets_lengths=feeder.eval_targets_lengths,
                          global_step=global_step, is_training=False, is_evaluating=True,
                          split_infos=feeder.eval_split_infos)
         model.add_loss()
@@ -164,7 +164,7 @@ def train(log_dir, args, hparams):
     step = 0
     time_window = ValueWindow(100)
     loss_window = ValueWindow(100)
-    saver = tf.train.Saver(max_to_keep=5)
+    saver = tf.train.Saver(max_to_keep=3)
     
     log("Tacotron training set to a maximum of {} steps".format(args.tacotron_train_steps))
     
@@ -223,7 +223,7 @@ def train(log_dir, args, hparams):
                     log("\nWriting summary at step {}".format(step))
                     summary_writer.add_summary(sess.run(stats), step)
                 
-                if step % args.eval_interval == 0:
+                if step % args.eval_interval == 3000:
                     # Run eval and save eval stats
                     log("\nRunning evaluation at step {}".format(step))
                     
