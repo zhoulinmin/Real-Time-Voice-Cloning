@@ -4,7 +4,7 @@ from tensorflow.contrib.training import HParams
 hparams = HParams(
     # Comma-separated list of cleaners to run on text prior to training and eval. For non-English
     # text, you may want to use "basic_cleaners" or "transliteration_cleaners".
-    cleaners="english_cleaners",
+    cleaners="basic_cleaners",
     
     # If you only have 1 GPU or want to use only one GPU, please set num_gpus=0 and specify the 
     # GPU idx on run. example:
@@ -44,8 +44,8 @@ hparams = HParams(
     # Hardware setup: Default supposes user has only one GPU: "/gpu:0" (Tacotron only for now! 
     # WaveNet does not support multi GPU yet, WIP)
     # Synthesis also uses the following hardware parameters for multi-GPU parallel synthesis.
-    tacotron_gpu_start_idx=0,  # idx of the first GPU to be used for Tacotron training.
-    tacotron_num_gpus=1,  # Determines the number of gpus in use for Tacotron training.
+    tacotron_gpu_start_idx=4,  # idx of the first GPU to be used for Tacotron training.
+    tacotron_num_gpus=2,  # Determines the number of gpus in use for Tacotron training.
     split_on_cpu=True,
     # Determines whether to split data on CPU or on first GPU. This is automatically True when 
 	# more than 1 GPU is used.
@@ -98,7 +98,7 @@ hparams = HParams(
     clip_mels_length=True,
     # For cases of OOM (Not really recommended, only use if facing unsolvable OOM errors, 
 	# also consider clipping your samples to smaller chunks)
-    max_mel_frames=900,
+    max_mel_frames=1200,
     # Only relevant when clip_mels_length = True, please only use after trying output_per_steps=3
 	#  and still getting OOM errors.
     
@@ -111,19 +111,20 @@ hparams = HParams(
     silence_threshold=2,  # silence threshold used for sound trimming for wavenet preprocessing
     
     # Mel spectrogram  
-    n_fft=800,  # Extra window size is filled with 0 paddings to match this parameter
+    n_fft=1024,  # Extra window size is filled with 0 paddings to match this parameter
     hop_size=200,  # For 16000Hz, 200 = 12.5 ms (0.0125 * sample_rate)
     win_size=800,  # For 16000Hz, 800 = 50 ms (If None, win_size = n_fft) (0.05 * sample_rate)
     sample_rate=16000,  # 16000Hz (corresponding to librispeech) (sox --i <filename>)
-    
+    num_freq = 513,
     frame_shift_ms=None,  # Can replace hop_size parameter. (Recommended: 12.5)
     
-    # M-AILABS (and other datasets) trim params (these parameters are usually correct for any 
-	# data, but definitely must be tuned for specific speakers)
-    trim_fft_size=512,
-    trim_hop_size=128,
-    trim_top_db=23,
-    
+
+ 	#M-AILABS (and other datasets) trim params (there parameters are usually correct for any data, but definitely must be tuned for specific speakers)
+	trim_silence = True, #Whether to clip silence in Audio (at beginning and end of audio only, not the middle)
+	trim_fft_size = 2048, #Trimming window size
+	trim_hop_size = 512, #Trimmin hop length
+	trim_top_db = 45, #Trimming db difference from reference db (smaller==harder trim.)
+
     # Mel and Linear spectrograms normalization/scaling and clipping
     signal_normalization=True,
     # Whether to normalize mel spectrograms to some predefined range (following below parameters)
@@ -139,7 +140,7 @@ hparams = HParams(
     # whether to rescale to [0, 1] for wavenet. (better audio quality)
     clip_for_wavenet=True,
     # whether to clip [-max, max] before training/synthesizing with wavenet (better audio quality)
-    
+    wavenet_pad_sides = 1,
     # Contribution by @begeekmyfriend
     # Spectrogram Pre-Emphasis (Lfilter: Reduce spectrogram noise and helps model certitude 
 	# levels. Also allows for better G&L phase reconstruction)
@@ -223,7 +224,7 @@ hparams = HParams(
     cross_entropy_pos_weight=20,
     # Use class weights to reduce the stop token classes imbalance (by adding more penalty on 
     # False Negatives (FN)) (1 = disabled)
-    predict_linear=False,
+    predict_linear=True,
     # Whether to add a post-processing network to the Tacotron to predict linear spectrograms (
 	# True mode Not tested!!)
     ###########################################################################################################################################
@@ -240,12 +241,12 @@ hparams = HParams(
     # major slowdowns! Only use when critical!)
     
     # train/test split ratios, mini-batches sizes
-    tacotron_batch_size=36,  # number of training samples on each training steps (was 32)
+    tacotron_batch_size=48,  # number of training samples on each training steps (was 32)
     # Tacotron Batch synthesis supports ~16x the training batch size (no gradients during 
     # testing). 
     # Training Tacotron with unmasked paddings makes it aware of them, which makes synthesis times
     #  different from training. We thus recommend masking the encoder.
-    tacotron_synthesis_batch_size=128,
+    tacotron_synthesis_batch_size=1,
     # DO NOT MAKE THIS BIGGER THAN 1 IF YOU DIDN"T TRAIN TACOTRON WITH "mask_encoder=True"!!
     tacotron_test_size=0.05,
     # % of data to keep as test data, if None, tacotron_test_batches must be not None. (5% is 
@@ -258,7 +259,7 @@ hparams = HParams(
     tacotron_start_decay=50000,  # Step at which learning decay starts
     tacotron_decay_steps=50000,  # Determines the learning rate decay slope (UNDER TEST)
     tacotron_decay_rate=0.5,  # learning rate decay rate (UNDER TEST)
-    tacotron_initial_learning_rate=1e-3,  # starting learning rate
+    tacotron_initial_learning_rate=1e-4,  # starting learning rate
     tacotron_final_learning_rate=1e-5,  # minimal learning rate
     
     # Optimization parameters
@@ -274,7 +275,7 @@ hparams = HParams(
     tacotron_zoneout_rate=0.1,  # zoneout rate for all LSTM cells in the network
     tacotron_dropout_rate=0.5,  # dropout rate for all convolutional layers + prenet
     tacotron_clip_gradients=True,  # whether to clip gradients
-    
+    tacotron_fine_tuning = True,
     # Evaluation parameters
     natural_eval=False,
     # Whether to use 100% natural eval (to evaluate Curriculum Learning performance) or with same

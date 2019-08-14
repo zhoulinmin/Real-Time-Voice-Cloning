@@ -14,8 +14,7 @@ def preprocess_librispeech(datasets_root: Path, out_dir: Path, n_processes: int,
                            skip_existing: bool, hparams):
     # Gather the input directories
     dataset_root = datasets_root.joinpath("LibriSpeech")
-    input_dirs = [dataset_root.joinpath("train-clean-100"), 
-                  dataset_root.joinpath("train-clean-360")]
+    input_dirs = [dataset_root.joinpath("train-clean-100")] 
     print("\n    ".join(map(str, ["Using data from:"] + input_dirs)))
     assert all(input_dir.exists() for input_dir in input_dirs)
     
@@ -215,7 +214,7 @@ def create_embeddings(synthesizer_root: Path, encoder_model_fpath: Path, n_proce
     # Gather the input wave filepath and the target output embed filepath
     with metadata_fpath.open("r") as metadata_file:
         metadata = [line.split("|") for line in metadata_file]
-        fpaths = [(wav_dir.joinpath(m[0]), embed_dir.joinpath(m[2])) for m in metadata]
+        fpaths = [(wav_dir.joinpath(m[0]), embed_dir.joinpath(m[3])) for m in metadata]
         
     # TODO: improve on the multiprocessing, it's terrible. Disk I/O is the bottleneck here.
     # Embed the utterances in separate threads
